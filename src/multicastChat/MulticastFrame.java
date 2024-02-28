@@ -7,10 +7,6 @@ import java.awt.event.*;
 import java.util.Date;
 import java.text.SimpleDateFormat;
 
-/**
- * Main class for the multicast chat application that provides a GUI for user
- * interaction.
- */
 public class MulticastFrame extends javax.swing.JFrame {
 
     private MulticastSocket multicastSocket;
@@ -26,27 +22,28 @@ public class MulticastFrame extends javax.swing.JFrame {
         initComponents();
     }
 
-    /**
-     * Listens for and processes incoming multicast messages. Displays messages with the sender's IP and timestamp.
-     */
+    // Listens for and processes incoming multicast messages.
     private void receiveMessages() {
         byte[] buffer = new byte[1024]; // Buffer for incoming messages.
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                multicastSocket.receive(packet);
+                multicastSocket.receive(packet); // Receives a message from the multicast group.
+                // Formats the received message.
                 String receivedMessage = new String(packet.getData(), 0, packet.getLength());
                 String senderIP = packet.getAddress().getHostAddress();
                 String timeStamp = new SimpleDateFormat("HH:mm:ss").format(new Date());
                 String formattedMessage = timeStamp + " " + senderIP + " : " + receivedMessage;
 
+                // Updates the text area of the GUI safely on the Swing event thread.
                 SwingUtilities.invokeLater(() -> messageTextArea.append(formattedMessage + "\n"));
             } catch (IOException e) {
+                // If an error occurs while receiving, display an error message unless the socket has been closed.
                 if (!multicastSocket.isClosed()) {
                     JOptionPane.showMessageDialog(this, "Error receiving message: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
-                break; // Exit if socket is closed.
+                break;
             }
         }
     }
@@ -213,61 +210,82 @@ public class MulticastFrame extends javax.swing.JFrame {
 
     private void leaveButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_leaveButtonActionPerformed
         try {
+            // Checks if the user is connected to the multicast group.
             if (joined) {
-                multicastSocket.leaveGroup(multicastGroup); // Leave the multicast group.
-                multicastSocket.close(); // Close the multicast socket.
-                joined = false; // Mark as not joined.
-                receiveThread.interrupt(); // Interrupt the receiving thread.
+                // Leaves the multicast group and closes the socket, thus ending the connection.
+                multicastSocket.leaveGroup(multicastGroup);
+                multicastSocket.close();
 
-                // Enable connection fields and "Join" button, disable "Leave" button.
+                // Marks the state as not connected and interrupts the message receiving thread.
+                joined = false;
+                receiveThread.interrupt();
+
+                // Enables the fields for a new connection and adjusts the "Join" and "Leave" buttons.
                 ipTextField.setEnabled(true);
                 portTextField.setEnabled(true);
                 nameTextField.setEnabled(true);
                 joinButton.setEnabled(true);
                 leaveButton.setEnabled(false);
 
-                messageTextArea.setText(""); // Clear the message display area.
-                messageTextArea.append("Left the chat session.\n"); // Notify user in the message area.
+                // Clears the text area.
+                messageTextArea.setText("");
+                messageTextArea.append("Left the chat session.\n");
             }
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Error leaving multicast group: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            // In case of an error when leaving the group, displays an error message.
+            JOptionPane.showMessageDialog(this, "Error leaving the multicast group: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }//GEN-LAST:event_leaveButtonActionPerformed
 
     private void joinButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_joinButtonActionPerformed
         try {
             int portVerification = Integer.parseInt(portTextField.getText());
-            // Validate the port number.
+            // Validates the port number.
             if (portVerification < 1024 || portVerification > 65535) {
                 throw new IllegalArgumentException("Invalid port, must be between 1024 and 65535.");
             }
-            if (!joined) {
-                multicastGroup = InetAddress.getByName(ipTextField.getText()); // Determine the multicast group.
-                port = portVerification; // Set the port number.
-                multicastSocket = new MulticastSocket(port); // Create the multicast socket.
-                multicastSocket.joinGroup(multicastGroup); // Join the multicast group.
-                joined = true; // Mark as joined.
 
-                // Disable connection fields and "Join" button, enable "Leave" button.
+            // Checks if the IP address is valid.
+            InetAddress address;
+            try {
+                address = InetAddress.getByName(ipTextField.getText());
+            } catch (UnknownHostException e) {
+                throw new IllegalArgumentException("Invalid IP address.");
+            }
+
+            // Checks if the name field is empty.
+            String name = nameTextField.getText().trim();
+            if (name.isEmpty()) {
+                throw new IllegalArgumentException("Name is required.");
+            }
+
+            if (!joined) {
+                multicastGroup = address;
+                port = portVerification;
+                multicastSocket = new MulticastSocket(port);
+                multicastSocket.joinGroup(multicastGroup);
+                joined = true;
+
+                // Disables the IP, port, and name entry fields.
                 ipTextField.setEnabled(false);
                 portTextField.setEnabled(false);
                 nameTextField.setEnabled(false);
+
+                // Disables the "Join" button and enables the "Leave" button.
                 joinButton.setEnabled(false);
                 leaveButton.setEnabled(true);
 
-                messageTextArea.append("Entraste no chat! Tem uma boa sessão :)\n"); // Notify user in the message area.
-
-                // Start the thread to receive messages.
+                // Starts a new thread to listen to chat messages asynchronously.
                 receiveThread = new Thread(this::receiveMessages);
                 receiveThread.start();
-            }
-        } catch (NumberFormatException e) {
 
-            JOptionPane.showMessageDialog(this, "Please enter a valid port number.", "Port Error", JOptionPane.ERROR_MESSAGE);
+                // Adds a message informing that the user has joined a chat session.
+                messageTextArea.append("Joined the chat session!\n");
+            }
         } catch (IllegalArgumentException e) {
-            JOptionPane.showMessageDialog(this, e.getMessage(), "Port Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error joining the multicast group: " + e.getMessage(), "Network Error", JOptionPane.ERROR_MESSAGE);
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "Error joining multicast group: " + e.getMessage(), "Network Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error joining the multicast group: " + e.getMessage(), "Network Error", JOptionPane.ERROR_MESSAGE);
         }
     }//GEN-LAST:event_joinButtonActionPerformed
 
@@ -275,21 +293,15 @@ public class MulticastFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
     }//GEN-LAST:event_messageTextFieldActionPerformed
 
-    /**
-     * Sends a message to the multicast group with the sender's name and message content.
-     */
     private void sendButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sendButtonActionPerformed
-
+        // Sends a message to the multicast group with the sender's name and message content.
         if (!messageTextField.getText().trim().isEmpty()) {
             try {
-                String name = nameTextField.getText().trim();
-                String messageContent = messageTextField.getText().trim();
-                String send = name + " : " + messageContent;
-
-                byte[] buffer = send.getBytes();
+                String messageContent = nameTextField.getText().trim() + " : " + messageTextField.getText().trim();
+                byte[] buffer = messageContent.getBytes();
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length, multicastGroup, port);
-                multicastSocket.send(packet);
-                messageTextField.setText("");
+                multicastSocket.send(packet); // Sends the message to all members of the multicast group.
+                messageTextField.setText(""); // Clears the text field after sending.
             } catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error sending message: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
